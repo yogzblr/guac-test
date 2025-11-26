@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  guacd:
+    image: guacamole/guacd:1.6.0
+    container_name: guacd
+    restart: unless-stopped
+    ports:
+      - "4822:4822"        # optional: expose guacd for debugging
+    networks:
+      - guacnet
+
+  guac-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: guac-app
+    restart: unless-stopped
+    depends_on:
+      - guacd
+    environment:
+      # Shared secret for token encryption (must match any external generators)
+      TOKEN_SECRET: "b178be10790899f17b2e970fa16bfc73"
+      # API key required in x-api-key header for /token and /presets
+      API_KEY: "openapikey"
+      LOG_LEVEL: "DEBUG"
+      # App & guacd config
+      PORT: "8080"
+      GUACD_HOST: "guacd"
+      GUACD_PORT: "4822"
+      CONNECTIONS_FILE: "/usr/src/app/connections.json"
+    ports:
+      - "8080:8080"        # UI, /token, /metrics
+    networks:
+      - guacnet
+
+networks:
+  guacnet:
+    driver: bridge
+
