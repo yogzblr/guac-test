@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Full guac-lite application server
  * Features:
  *  - Token generation (AES-256-CBC)

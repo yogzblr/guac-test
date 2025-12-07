@@ -1,111 +1,24 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Guacamole Lite Client</title>
-  <style>
-    html, body { height: 100%; margin: 0; background: #000; color: #eee; font-family: sans-serif; }
-    #display { width: 100%; height: 100%; }
-  </style>
-</head>
-<body>
-	<textarea id="clipboard-textarea" style="position: absolute; left: -9999px;"></textarea>
-  <div id="display"></div>
-  <!-- Guacamole JS client bundled locally from Apache Guacamole (guacamole-common-js) -->
-  <script src="/js/all.min.js"></script>
-  <script>
-  (function() {
-    const params = new URLSearchParams(window.location.search);
-    let token = params.get('token') || '';
+﻿<!doctype html>
+<meta charset="utf-8">
+<title>guacamole-lite test</title>
 
-    // Debug
-    console.log('Raw token from URL param:', JSON.stringify(token));
+<div id="app-container">
+    <!-- Connection Screen -->
+    <div id="connection-screen">
+    </div>
 
-    // Strip accidental '?undefined' or anything after a stray '?'
-//    token = token.split('?')[0].replace(/undefined$/,'').trim();
+    <!-- Display Screen -->
+    <div id="display-screen">
+        <div id="display-header">
+        </div>
+        <!-- The remote-desktop surface -->
+        <div id="display"></div>
+    </div>
+</div>
 
-    if (!token) {
-      document.body.innerHTML = '<h2>No valid token provided</h2>';
-      return;
-    }
-    // const wsUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/?token=${encodeURIComponent(token)}`;
+<!-- Hidden textarea for clipboard integration -->
+<textarea id="clipboard-textarea" style="position: absolute; left: -9999px;"></textarea>
 
-    // Build ws URL robustly using the URL API (avoids ?undefined, double ? etc)
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    // create base ws origin (host includes port if needed)
-    const base = `${proto}://${location.host}/ws`; // NO trailing slash
-    const urlObj = new URL(base);
-    urlObj.searchParams.set('token', token); // automatically encodes
-
-    const wsUrl = urlObj.toString(); // e.g. ws://host:8080/ws?token=...
-
-  // (optional) defensive cleanup if some upstream added junk
-    const cleanedWsUrl = wsUrl.replace(/\?undefined$/, '');
-
-    console.log('Using WebSocket URL:', cleanedWsUrl);
-    const tunnel = new Guacamole.WebSocketTunnel(cleanedWsUrl);
-    const guac = new Guacamole.Client(tunnel);
-    const display = document.getElementById('display');
-    const element = guac.getDisplay().getElement();
-    element.style.width = '100%';
-    element.style.height = '100%';
-    display.appendChild(element);
-
-      // Set up mouse
-        const mouse = new Guacamole.Mouse(guac.getDisplay().getElement());
-        mouse.onEach(['mousedown', 'mouseup', 'mousemove', 'mousewheel'],
-            e => guac.sendMouseState(e.state));
-
-        // Set up keyboard
-        const keyboard = new Guacamole.Keyboard(window);
-        keyboard.onkeydown = keysym => guac.sendKeyEvent(1, keysym);
-        keyboard.onkeyup = keysym => guac.sendKeyEvent(0, keysym);
-        currentKeyboard = keyboard;
-
-		     // Set up clipboard handler
-        guac.onclipboard = (stream, mimetype) => {
-            let data = '';
-            const reader = new Guacamole.StringReader(stream);
-            reader.ontext = text => data += text;
-            reader.onend = () => {
-                console.log("Clipboard data received:", data);
-                // Update the hidden textarea and trigger copy
-                const textarea = document.getElementById('clipboard-textarea');
-                if (textarea) {
-                    textarea.value = data;
-                    textarea.select();
-                    try {
-                        const successful = document.execCommand('copy');
-                        const msg = successful ? 'successful' : 'unsuccessful';
-                        console.log('Copying text command was ' + msg);
-                    } catch (err) {
-                        console.error('Failed to copy text: ', err);
-                    }
-                    // Deselect the text to avoid visual artifacts
-                    window.getSelection().removeAllRanges();
-                }
-            };
-        };
-
-
-		    // Set up paste event listener
-        pasteEventListener = (event) => {
-            const text = event.clipboardData.getData('text/plain');
-            if (text && currentClient) {
-                event.preventDefault(); // Prevent default paste behavior in browser
-                // Send clipboard data to the remote session
-                const stream = currentClient.createClipboardStream('text/plain');
-                const writer = new Guacamole.StringWriter(stream);
-                writer.sendText(text);
-                writer.sendEnd();
-                console.log("Sent clipboard data to remote:", text);
-            }
-        };
-        window.addEventListener('paste', pasteEventListener);
-    guac.connect();
-
-    window.onunload = () => guac.disconnect();
-  })();
-</script>
-</body>
-</html>
+<!-- official guacamole-common-js bundle copied by the Dockerfile -->
+<script src="/js/all.min.js"></script>
+<script src="/main.js"></script>
