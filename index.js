@@ -1,6 +1,4 @@
-﻿/**
- * Full guac-lite application server
- * Features:
+* Features:
  *  - Token generation (AES-256-CBC)
  *  - Token expiry enforcement
  *  - WebSocket token validation
@@ -233,6 +231,97 @@ function decryptToken(tokenBase64) {
 }
 
 /* ------------------------------------------------------------------
+   HELPER: BUILD CONNECTION STRING
+-------------------------------------------------------------------*/
+
+function buildConnectionString(conn) {
+  const type = conn.type || conn.protocol || 'ssh';
+  
+  if (type === 'kubernetes' || conn.kubernetes) {
+    // Kubernetes exec connection via SSH with ProxyCommand
+    const k8s = conn.kubernetes || {};
+    const namespace = k8s.namespace || 'default';
+    const pod = k8s.pod || k8s.podName;
+    const container = k8s.container || k8s.containerName || '';
+    const command = k8s.command || '/bin/sh';
+    const kubeconfig = k8s.kubeconfig || process.env.KUBECONFIG || '';
+    
+    if (!pod) {
+      throw new Error('Kubernetes pod name is required');
+    }
+    
+    // Build kubectl exec command for ProxyCommand
+    let kubectlCmd = 'kubectl exec -i';
+    if (namespace) kubectlCmd += ` -n ${namespace}`;
+    if (container) kubectlCmd += ` -c ${container}`;
+    kubectlCmd += ` ${pod} -- ${command}`;
+    
+    if (kubeconfig) {
+      kubectlCmd = `KUBECONFIG=${kubeconfig} ${kubectlCmd}`;
+    }
+    
+    // SSH connection string with ProxyCommand for kubectl exec
+    // Format: ssh://user@host?ProxyCommand=kubectl exec ...
+    const host = k8s.host || 'kubernetes';
+    const user = k8s.user || conn.username || 'root';
+    const port = k8s.port || conn.port || 22;
+    
+    return `ssh://${user}@${host}:${port}?ProxyCommand=${encodeURIComponent(kubectlCmd)}`;
+  }
+  
+  if (type === 'rdp') {
+    // RDP connection
+    const host = conn.hostname || conn.host;
+    const port = conn.port || 3389;
+    const username = conn.username || '';
+    const password = conn.password || '';
+    const domain = conn.domain || '';
+    const security = conn.security || 'any';
+    const ignoreCert = conn['ignore-cert'] || conn.ignoreCert || false;
+    const audio = conn.audio || false;
+    
+    let rdpStr = `rdp://${host}:${port}`;
+    const params = [];
+    
+    if (username) params.push(`username=${encodeURIComponent(username)}`);
+    if (password) params.push(`password=${encodeURIComponent(password)}`);
+    if (domain) params.push(`domain=${encodeURIComponent(domain)}`);
+    if (security !== 'any') params.push(`security=${security}`);
+    if (ignoreCert) params.push('ignore-cert=true');
+    if (audio) params.push('audio=true');
+    
+    if (params.length > 0) {
+      rdpStr += '?' + params.join('&');
+    }
+    
+    return rdpStr;
+  }
+  
+  // Default SSH connection
+  const host = conn.hostname || conn.host;
+  const port = conn.port || 22;
+  const username = conn.username || 'root';
+  const password = conn.password || '';
+  const privateKey = conn['private-key'] || conn.privateKey || '';
+  const passphrase = conn.passphrase || '';
+  const hostKey = conn['host-key'] || conn.hostKey || '';
+  
+  let sshStr = `ssh://${username}@${host}:${port}`;
+  const params = [];
+  
+  if (password) params.push(`password=${encodeURIComponent(password)}`);
+  if (privateKey) params.push(`private-key=${encodeURIComponent(privateKey)}`);
+  if (passphrase) params.push(`passphrase=${encodeURIComponent(passphrase)}`);
+  if (hostKey) params.push(`host-key=${encodeURIComponent(hostKey)}`);
+  
+  if (params.length > 0) {
+    sshStr += '?' + params.join('&');
+  }
+  
+  return sshStr;
+}
+
+/* ------------------------------------------------------------------
    TOKEN ENDPOINT (PRESET + DYNAMIC)
 -------------------------------------------------------------------*/
 
@@ -255,7 +344,19 @@ app.post('/token', (req, res) => {
       return res.status(404).json({ error: 'preset not found' });
 
     const now = Math.floor(Date.now() / 1000);
-    const conn = { ...preset, _expires: now + ttl };
+    let conn = { ...preset };
+    
+    // Build connection string if not already present
+    if (!conn.connectionString) {
+      try {
+        conn.connectionString = buildConnectionString(conn);
+      } catch (err) {
+        return res.status(400).json({ error: `Invalid connection config: ${err.message}` });
+      }
+    }
+    
+    // Add expiry to connection object
+    conn._expires = now + ttl;
 
     const token = createTokenForConnection(conn);
     tokensIssued.inc();
@@ -273,6 +374,7 @@ app.post('/token', (req, res) => {
       wsUrl,
       expires_at: conn._expires,
       mode: 'preset',
+      connection_type: conn.type || conn.protocol || 'ssh',
     });
   }
 
@@ -282,14 +384,21 @@ app.post('/token', (req, res) => {
     });
 
   const now = Math.floor(Date.now() / 1000);
-  const conn = { ...body.connection, _expires: now + ttl };
-  const payload = {
-    connection: body.connection,
-   _expires: Math.floor(Date.now() / 1000) + ttl
-};
+  let conn = { ...body.connection };
+  
+  // Build connection string
+  try {
+    if (!conn.connectionString) {
+      conn.connectionString = buildConnectionString(conn);
+    }
+  } catch (err) {
+    return res.status(400).json({ error: `Invalid connection config: ${err.message}` });
+  }
+  
+  // Add expiry to connection object
+  conn._expires = now + ttl;
 
-  const token = createTokenForConnection(payload);
-  //const token = createTokenForConnection(conn);
+  const token = createTokenForConnection(conn);
   tokensIssued.inc();
 
   const wsProtocol =
@@ -305,6 +414,7 @@ app.post('/token', (req, res) => {
     wsUrl,
     expires_at: conn._expires,
     mode: 'dynamic',
+    connection_type: conn.type || conn.protocol || 'ssh',
   });
 });
 
