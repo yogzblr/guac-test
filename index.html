@@ -1,24 +1,224 @@
-﻿<!doctype html>
-<meta charset="utf-8">
-<title>guacamole-lite test</title>
+head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guacamole Bastion - SSH/RDP/Kubernetes</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-<div id="app-container">
-    <!-- Connection Screen -->
-    <div id="connection-screen">
-    </div>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
 
-    <!-- Display Screen -->
-    <div id="display-screen">
-        <div id="display-header">
+        #app-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #connection-screen {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            background: #1a1a1a;
+        }
+
+        #display-screen {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+
+        #display-header {
+            background: #2d2d2d;
+            padding: 10px 20px;
+            border-bottom: 1px solid #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        #display-title {
+            color: #fff;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        #clipboard-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        #clipboard-area {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px;
+            min-width: 300px;
+        }
+
+        #clipboard-label {
+            font-size: 11px;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        #clipboard-input {
+            background: #1a1a1a;
+            border: 1px solid #555;
+            border-radius: 3px;
+            color: #e0e0e0;
+            padding: 8px;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+            min-height: 40px;
+            max-height: 120px;
+        }
+
+        #clipboard-input:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+
+        #clipboard-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .clipboard-btn {
+            background: #4a9eff;
+            border: none;
+            border-radius: 3px;
+            color: #fff;
+            padding: 6px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .clipboard-btn:hover {
+            background: #3a8eef;
+        }
+
+        .clipboard-btn:active {
+            background: #2a7edf;
+        }
+
+        .clipboard-btn.secondary {
+            background: #555;
+        }
+
+        .clipboard-btn.secondary:hover {
+            background: #666;
+        }
+
+        #display {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+            background: #000;
+        }
+
+        #display canvas {
+            display: block;
+            margin: 0 auto;
+        }
+
+        /* Hidden textarea for clipboard integration */
+        #clipboard-textarea {
+            position: absolute;
+            left: -9999px;
+            opacity: 0;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4a9eff;
+            display: inline-block;
+            margin-right: 6px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-indicator.disconnected {
+            background: #ff4444;
+            animation: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <!-- Connection Screen -->
+        <div id="connection-screen">
+            <div style="text-align: center;">
+                <h2 style="margin-bottom: 20px; color: #fff;">Connecting...</h2>
+                <div class="status-indicator"></div>
+            </div>
         </div>
-        <!-- The remote-desktop surface -->
-        <div id="display"></div>
+
+        <!-- Display Screen -->
+        <div id="display-screen">
+            <div id="display-header">
+                <div id="display-title">
+                    <span class="status-indicator" id="connection-status"></span>
+                    <span id="connection-info">Bastion Connection</span>
+                </div>
+                <div id="clipboard-container">
+                    <div id="clipboard-area">
+                        <label id="clipboard-label" for="clipboard-input">Clipboard</label>
+                        <textarea 
+                            id="clipboard-input" 
+                            placeholder="Type or paste text here, then click 'Send to Remote'..."
+                            rows="2"
+                        ></textarea>
+                        <div id="clipboard-buttons">
+                            <button class="clipboard-btn" id="send-clipboard-btn" title="Send clipboard content to remote session">
+                                📤 Send to Remote
+                            </button>
+                            <button class="clipboard-btn secondary" id="get-clipboard-btn" title="Get clipboard content from remote session">
+                                📥 Get from Remote
+                            </button>
+                            <button class="clipboard-btn secondary" id="clear-clipboard-btn" title="Clear clipboard">
+                                🗑️ Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- The remote-desktop surface -->
+            <div id="display"></div>
+        </div>
     </div>
-</div>
 
-<!-- Hidden textarea for clipboard integration -->
-<textarea id="clipboard-textarea" style="position: absolute; left: -9999px;"></textarea>
+    <!-- Hidden textarea for clipboard integration -->
+    <textarea id="clipboard-textarea"></textarea>
 
-<!-- official guacamole-common-js bundle copied by the Dockerfile -->
-<script src="/js/all.min.js"></script>
-<script src="/main.js"></script>
+    <!-- official guacamole-common-js bundle copied by the Dockerfile -->
+    <script src="/js/all.min.js"></script>
+    <script src="/main.js"></script>
+</body>
+</html>
